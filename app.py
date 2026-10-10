@@ -4,6 +4,7 @@ from pathlib import Path
 
 import gradio as gr
 import numpy as np
+import torch
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from sklearn.metrics import (
@@ -28,20 +29,67 @@ with open(ARTIFACTS / "training_curves.json") as f:
 with open(ARTIFACTS / "distributions.json") as f:
     dist = json.load(f)
 
+X_test = np.array(td["X_test"])
 y_test = np.array(td["y_test"])
-y_prob_sklearn = np.array(td["y_prob_sklearn"])
-y_prob_manual = np.array(td["y_prob_manual"])
-y_prob_std = np.array(td["y_prob_std"])
 dates_test = td["dates_test"]
 feature_names = td["feature_names"]
+n_features = td["n_features"]
 majority_class = td["majority_class"]
-results = td["results"]
+
+with open(ARTIFACTS / "sklearn_model.pkl", "rb") as f:
+    sklearn_model = pickle.load(f)
+
+manual_weights = torch.load(ARTIFACTS / "manual_pytorch.pt", weights_only=True)
+W_manual = manual_weights["W"]
+b_manual = manual_weights["b"]
+
+
+class LogisticRegressionModel(torch.nn.Module):
+    def __init__(self, n_features):
+        super().__init__()
+        self.linear = torch.nn.Linear(n_features, 1)
+
+    def forward(self, x):
+        return self.linear(x)
+
+
+std_model = LogisticRegressionModel(n_features)
+std_model.load_state_dict(torch.load(ARTIFACTS / "std_pytorch.pt", weights_only=True))
+std_model.eval()
+
+X_te_t = torch.tensor(X_test, dtype=torch.float32)
+
+y_prob_sklearn = sklearn_model.predict_proba(X_test)[:, 1]
+
+with torch.no_grad():
+    y_prob_manual = torch.sigmoid(X_te_t @ W_manual + b_manual).squeeze().numpy()
+
+with torch.no_grad():
+    y_prob_std = torch.sigmoid(std_model(X_te_t)).squeeze().numpy()
 
 MODEL_PROBS = {
     "Scikit-learn LR": y_prob_sklearn,
     "Manual PyTorch LR": y_prob_manual,
     "Standard PyTorch LR": y_prob_std,
 }
+
+y_baseline = np.full_like(y_test, majority_class)
+results = {}
+for name, y_pred, y_prob in [
+    ("Naive baseline", y_baseline, np.full(len(y_test), float(majority_class))),
+    ("Scikit-learn LR", (y_prob_sklearn >= 0.5).astype(int), y_prob_sklearn),
+    ("Manual PyTorch LR", (y_prob_manual >= 0.5).astype(int), y_prob_manual),
+    ("Standard PyTorch LR", (y_prob_std >= 0.5).astype(int), y_prob_std),
+]:
+    acc = accuracy_score(y_test, y_pred)
+    prec = precision_score(y_test, y_pred, zero_division=0)
+    rec = recall_score(y_test, y_pred, zero_division=0)
+    f1 = f1_score(y_test, y_pred, zero_division=0)
+    try:
+        auc = roc_auc_score(y_test, y_prob)
+    except ValueError:
+        auc = 0.0
+    results[name] = {"accuracy": acc, "precision": prec, "recall": rec, "f1": f1, "auc": auc}
 
 COST_FP = 10_000
 COST_FN = 5_000

@@ -63,6 +63,6 @@ The naive baseline only predicted up; it got 56.6% because the market happened t
 - The target is extremely noisy: predicting whether the S&P500 goes up or down tomorrow is one of the hardest financial problems. A less noisy target might be the direction over the next 5 days or whether the next day move is larger than 0.5%;
 - No transaction costs: the business cost in the dashboard assumes a fixed dollar amount per wrong trade, but a real trading strategy would need to account for bid-ask spreads, slippage, and position sizing. What matters in practice is the Sharpe ratio, not just raw accuracy;
 - Missing data sources: I only used price and volume data, which is the most basic and efficiently priced information. Real desks use additional data like bond yields, VIX, sector rotation patterns, macroeconomic releases, and sentiment data from news and social media. These alternative data sources may carry signals that are not yet fully priced in.
-- 
+  
 ## Generative AI use disclosure
 I use AI for boilerplate code such as loading data, saving models to disk, and building the dashboard. All decisions, such as which dataset to use, how to frame the business model, feature engineering, and so on, are my own. 
